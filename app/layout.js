@@ -1,5 +1,5 @@
 export const metadata = {
-  title: 'PawHaven Dashboard',
+  title: 'Hughes Financials',
 };
 
 export default function RootLayout({ children }) {

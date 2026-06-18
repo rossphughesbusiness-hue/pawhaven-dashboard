@@ -16,3 +16,9 @@ export async function POST(req) {
   }
   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 }
+
+export async function DELETE() {
+  const cookieStore = cookies();
+  cookieStore.delete('dash_auth');
+  return NextResponse.json({ ok: true });
+}

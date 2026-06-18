@@ -29,9 +29,9 @@ export default function LoginPage() {
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
       <div style={{ background: '#1e293b', borderRadius: 16, padding: '48px 40px', width: 360, boxShadow: '0 25px 50px rgba(0,0,0,0.5)' }}>
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <div style={{ fontSize: 40, marginBottom: 8 }}>🐾</div>
-          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: '#f1f5f9' }}>PawHaven</h1>
-          <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: 14 }}>Analytics Dashboard</p>
+          <div style={{ fontSize: 40, marginBottom: 8 }}>📊</div>
+          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: '#f1f5f9' }}>Hughes Financials</h1>
+          <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: 14 }}>Business Analytics</p>
         </div>
         <form onSubmit={handleSubmit}>
           <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#94a3b8', marginBottom: 6 }}>
