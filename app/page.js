@@ -36,14 +36,15 @@ const s = {
   storeTitle: { margin: 0, fontSize: 20, fontWeight: 800, color: '#f1f5f9' },
   storeSub: { margin: '2px 0 0', fontSize: 13, color: '#64748b' },
   refreshBtn: { padding: '8px 16px', borderRadius: 8, border: '1px solid #334155', background: 'transparent', color: '#94a3b8', cursor: 'pointer', fontSize: 13 },
-  grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 14, marginBottom: 28 },
-  card: { background: '#1e293b', borderRadius: 12, padding: '22px 18px' },
+  grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 14, marginBottom: 20 },
+  card: { background: '#1e293b', borderRadius: 12, padding: '20px 18px' },
   cardLabel: { fontSize: 11, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 },
-  cardValue: { fontSize: 34, fontWeight: 800, color: '#f1f5f9', margin: 0 },
+  cardValue: { fontSize: 30, fontWeight: 800, color: '#f1f5f9', margin: 0 },
   cardSub: { fontSize: 12, color: '#64748b', marginTop: 4 },
+  chartSection: { background: '#1e293b', borderRadius: 12, padding: '22px 22px 16px', marginBottom: 20 },
+  sectionTitle: { margin: '0 0 18px', fontSize: 15, fontWeight: 700, color: '#f1f5f9' },
   row: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18 },
   section: { background: '#1e293b', borderRadius: 12, padding: 22 },
-  sectionTitle: { margin: '0 0 18px', fontSize: 15, fontWeight: 700, color: '#f1f5f9' },
   table: { width: '100%', borderCollapse: 'collapse' },
   th: { textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#475569', textTransform: 'uppercase', paddingBottom: 10, borderBottom: '1px solid #334155' },
   td: { padding: '10px 0', borderBottom: '1px solid #0f172a', fontSize: 13, color: '#cbd5e1' },
@@ -58,6 +59,65 @@ function StatCard({ label, value, sub, color = '#f1f5f9' }) {
       <div style={s.cardLabel}>{label}</div>
       <p style={{ ...s.cardValue, color }}>{value}</p>
       {sub && <div style={s.cardSub}>{sub}</div>}
+    </div>
+  );
+}
+
+function RevenueChart({ daily }) {
+  if (!daily || daily.length === 0) return <div style={s.empty}>No revenue data yet.</div>;
+
+  const maxRevenue = Math.max(...daily.map(d => d.revenue), 0.01);
+  const totalDays = daily.length;
+  const chartH = 120;
+  const barW = Math.floor(700 / totalDays) - 2;
+
+  // Show every 5th label to avoid crowding
+  const labelInterval = Math.ceil(totalDays / 7);
+
+  return (
+    <div style={{ overflowX: 'auto' }}>
+      <svg width="100%" viewBox={`0 0 700 ${chartH + 30}`} preserveAspectRatio="none" style={{ display: 'block', minWidth: 400 }}>
+        {daily.map((d, i) => {
+          const barH = Math.max(2, (d.revenue / maxRevenue) * chartH);
+          const x = i * (700 / totalDays);
+          const y = chartH - barH;
+          const isToday = i === totalDays - 1;
+          return (
+            <g key={i}>
+              <rect
+                x={x + 1}
+                y={y}
+                width={barW}
+                height={barH}
+                rx={2}
+                fill={isToday ? '#34d399' : d.revenue > 0 ? '#6366f1' : '#1e2a3a'}
+              />
+              {d.revenue > 0 && (
+                <title>{d.label}: ${d.revenue.toFixed(2)}</title>
+              )}
+              {i % labelInterval === 0 && (
+                <text
+                  x={x + barW / 2}
+                  y={chartH + 20}
+                  textAnchor="middle"
+                  fontSize={9}
+                  fill="#475569"
+                >
+                  {d.label}
+                </text>
+              )}
+            </g>
+          );
+        })}
+      </svg>
+      <div style={{ display: 'flex', gap: 16, marginTop: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#475569' }}>
+          <div style={{ width: 10, height: 10, borderRadius: 2, background: '#6366f1' }} /> Revenue
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#475569' }}>
+          <div style={{ width: 10, height: 10, borderRadius: 2, background: '#34d399' }} /> Today
+        </div>
+      </div>
     </div>
   );
 }
@@ -99,13 +159,51 @@ function PawHavenData() {
         <button style={s.refreshBtn} onClick={load}>↻ Refresh</button>
       </div>
 
+      {/* Stat cards */}
       <div style={s.grid}>
-        <StatCard label="Total Revenue" value={`$${(stripe?.revenue || 0).toFixed(2)}`} sub="All time (Stripe)" color="#34d399" />
-        <StatCard label="Total Orders" value={stripe?.orders || 0} sub="Completed payments" />
-        <StatCard label="Products Tracked" value={views?.length || 0} sub="Unique pages viewed" />
-        <StatCard label="Top Product Views" value={views?.[0]?.views || 0} sub={views?.[0]?.name || '—'} color="#818cf8" />
+        <StatCard
+          label="Total Revenue"
+          value={`$${(stripe?.revenue || 0).toFixed(2)}`}
+          sub="All time"
+          color="#34d399"
+        />
+        <StatCard
+          label="Today's Revenue"
+          value={`$${(stripe?.todayRevenue || 0).toFixed(2)}`}
+          sub={`${stripe?.todayOrders || 0} order${stripe?.todayOrders !== 1 ? 's' : ''} today`}
+          color={stripe?.todayRevenue > 0 ? '#34d399' : '#f1f5f9'}
+        />
+        <StatCard
+          label="Total Orders"
+          value={stripe?.orders || 0}
+          sub="Completed payments"
+        />
+        <StatCard
+          label="Avg. Order Value"
+          value={`$${(stripe?.aov || 0).toFixed(2)}`}
+          sub="Per completed order"
+          color="#f59e0b"
+        />
+        <StatCard
+          label="Products Tracked"
+          value={views?.length || 0}
+          sub="Unique pages viewed"
+        />
+        <StatCard
+          label="Top Product Views"
+          value={views?.[0]?.views || 0}
+          sub={views?.[0]?.name || '—'}
+          color="#818cf8"
+        />
       </div>
 
+      {/* Revenue chart */}
+      <div style={s.chartSection}>
+        <h2 style={s.sectionTitle}>Revenue — Last 30 Days</h2>
+        <RevenueChart daily={stripe?.daily} />
+      </div>
+
+      {/* Tables */}
       <div style={s.row}>
         <div style={s.section}>
           <h2 style={s.sectionTitle}>Most Viewed Products</h2>
@@ -170,7 +268,6 @@ export default function Dashboard() {
 
   return (
     <div style={s.shell}>
-      {/* Sidebar */}
       <div style={s.sidebar}>
         <div style={s.sidebarTop}>
           <p style={s.brand}>Hughes Financials</p>
@@ -199,7 +296,6 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Main content */}
       <div style={s.main}>
         {activeStore === 'pawhaven' && <PawHavenData />}
       </div>
