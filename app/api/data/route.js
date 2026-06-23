@@ -14,7 +14,7 @@ async function redis(path) {
 
 async function getStripeData() {
   const key = process.env.STRIPE_SECRET_KEY;
-  if (!key) return { revenue: 0, orders: 0, aov: 0, todayRevenue: 0, todayOrders: 0, recent: [], daily: [] };
+  if (!key) return { revenue: 0, orders: 0, aov: 0, todayRevenue: 0, todayOrders: 0, thisWeekRevenue: 0, lastWeekRevenue: 0, thisWeekOrders: 0, lastWeekOrders: 0, recent: [], daily: [] };
 
   // Fetch last 100 succeeded payment intents
   const res = await fetch('https://api.stripe.com/v1/payment_intents?limit=100', {
@@ -27,14 +27,24 @@ async function getStripeData() {
   const revenue = succeeded.reduce((sum, p) => sum + p.amount, 0) / 100;
   const aov = succeeded.length > 0 ? revenue / succeeded.length : 0;
 
-  // Today's stats
+  // Today
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
   const todayTs = Math.floor(todayStart.getTime() / 1000);
   const todayOrders = succeeded.filter(p => p.created >= todayTs);
   const todayRevenue = todayOrders.reduce((sum, p) => sum + p.amount, 0) / 100;
 
-  // Build 30-day daily revenue map
+  // This week vs last week (rolling 7-day windows)
+  const now = Date.now();
+  const weekMs = 7 * 24 * 60 * 60 * 1000;
+  const thisWeekStart = Math.floor((now - weekMs) / 1000);
+  const lastWeekStart = Math.floor((now - 2 * weekMs) / 1000);
+  const thisWeekOrderList = succeeded.filter(p => p.created >= thisWeekStart);
+  const lastWeekOrderList = succeeded.filter(p => p.created >= lastWeekStart && p.created < thisWeekStart);
+  const thisWeekRevenue = thisWeekOrderList.reduce((sum, p) => sum + p.amount, 0) / 100;
+  const lastWeekRevenue = lastWeekOrderList.reduce((sum, p) => sum + p.amount, 0) / 100;
+
+  // 30-day daily revenue
   const daily = [];
   for (let i = 29; i >= 0; i--) {
     const d = new Date();
@@ -62,9 +72,42 @@ async function getStripeData() {
     aov,
     todayRevenue,
     todayOrders: todayOrders.length,
+    thisWeekRevenue,
+    lastWeekRevenue,
+    thisWeekOrders: thisWeekOrderList.length,
+    lastWeekOrders: lastWeekOrderList.length,
     recent,
     daily,
   };
+}
+
+async function getEmailSubscriberCount() {
+  const apiKey = process.env.RESEND_API_KEY;
+  const audienceId = process.env.RESEND_AUDIENCE_ID;
+  if (!apiKey || !audienceId) return 0;
+  try {
+    const res = await fetch(`https://api.resend.com/audiences/${audienceId}/contacts?limit=100`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      cache: 'no-store',
+    });
+    if (!res.ok) return 0;
+    const json = await res.json();
+    return json.total ?? (json.data?.length ?? 0);
+  } catch { return 0; }
+}
+
+async function getAbandonedCartCount() {
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return 0;
+  try {
+    const res = await fetch(`${url}/keys/cart_recovery:*`, {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: 'no-store',
+    });
+    const json = await res.json();
+    return Array.isArray(json.result) ? json.result.length : 0;
+  } catch { return 0; }
 }
 
 async function getViewData() {
@@ -95,6 +138,12 @@ export async function GET(req) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const [stripe, views] = await Promise.all([getStripeData(), getViewData()]);
-  return NextResponse.json({ stripe, views });
+  const [stripe, views, emailSubscribers, abandonedCarts] = await Promise.all([
+    getStripeData(),
+    getViewData(),
+    getEmailSubscriberCount(),
+    getAbandonedCartCount(),
+  ]);
+
+  return NextResponse.json({ stripe, views, emailSubscribers, abandonedCarts });
 }
