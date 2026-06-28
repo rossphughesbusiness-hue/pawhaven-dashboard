@@ -43,18 +43,18 @@ const s = {
   cardSub: { fontSize: 12, color: '#64748b', marginTop: 4 },
   chartSection: { background: '#1e293b', borderRadius: 12, padding: '22px 22px 16px', marginBottom: 20 },
   sectionTitle: { margin: '0 0 18px', fontSize: 15, fontWeight: 700, color: '#f1f5f9' },
-  row: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18 },
+  row: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, marginBottom: 20 },
   section: { background: '#1e293b', borderRadius: 12, padding: 22 },
   table: { width: '100%', borderCollapse: 'collapse' },
   th: { textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#475569', textTransform: 'uppercase', paddingBottom: 10, borderBottom: '1px solid #334155' },
   td: { padding: '10px 0', borderBottom: '1px solid #0f172a', fontSize: 13, color: '#cbd5e1' },
   bar: { height: 7, borderRadius: 4, background: '#6366f1', marginTop: 4 },
+  barAlt: { height: 7, borderRadius: 4, background: '#0ea5e9', marginTop: 4 },
   empty: { color: '#475569', fontSize: 13, textAlign: 'center', padding: '28px 0' },
   loading: { color: '#475569', textAlign: 'center', padding: '80px 0', fontSize: 15 },
 };
 
-// Week-over-week delta badge
-function Delta({ current, previous, prefix = '' }) {
+function Delta({ current, previous }) {
   if (!previous || previous === 0) return null;
   const pct = Math.round(((current - previous) / previous) * 100);
   const up = pct >= 0;
@@ -85,15 +85,12 @@ function StatCard({ label, value, sub, color = '#f1f5f9', delta }) {
 
 function RevenueChart({ daily }) {
   if (!daily || daily.length === 0) return <div style={s.empty}>No revenue data yet.</div>;
-
   const maxRevenue = Math.max(...daily.map(d => d.revenue), 0.01);
   const totalDays = daily.length;
   const chartH = 140;
   const chartW = 700;
   const barW = Math.floor(chartW / totalDays) - 2;
   const labelInterval = Math.ceil(totalDays / 7);
-
-  // Build SVG line path for trend
   const points = daily.map((d, i) => {
     const x = i * (chartW / totalDays) + barW / 2;
     const y = chartH - Math.max(2, (d.revenue / maxRevenue) * chartH);
@@ -103,16 +100,9 @@ function RevenueChart({ daily }) {
   return (
     <div style={{ overflowX: 'auto' }}>
       <svg width="100%" viewBox={`0 0 ${chartW} ${chartH + 30}`} preserveAspectRatio="none" style={{ display: 'block', minWidth: 400 }}>
-        {/* Grid lines */}
         {[0.25, 0.5, 0.75, 1].map(pct => (
-          <line key={pct}
-            x1={0} y1={chartH - pct * chartH}
-            x2={chartW} y2={chartH - pct * chartH}
-            stroke="#1e2a3a" strokeWidth={1}
-          />
+          <line key={pct} x1={0} y1={chartH - pct * chartH} x2={chartW} y2={chartH - pct * chartH} stroke="#1e2a3a" strokeWidth={1} />
         ))}
-
-        {/* Bars */}
         {daily.map((d, i) => {
           const barH = Math.max(2, (d.revenue / maxRevenue) * chartH);
           const x = i * (chartW / totalDays);
@@ -120,33 +110,17 @@ function RevenueChart({ daily }) {
           const isToday = i === totalDays - 1;
           return (
             <g key={i}>
-              <rect
-                x={x + 1} y={y} width={barW} height={barH} rx={2}
-                fill={isToday ? '#34d399' : d.revenue > 0 ? '#6366f1' : '#1a2535'}
-                opacity={isToday ? 1 : 0.85}
-              />
+              <rect x={x + 1} y={y} width={barW} height={barH} rx={2}
+                fill={isToday ? '#34d399' : d.revenue > 0 ? '#6366f1' : '#1a2535'} opacity={isToday ? 1 : 0.85} />
               {d.revenue > 0 && <title>{d.label}: ${d.revenue.toFixed(2)}</title>}
               {i % labelInterval === 0 && (
-                <text x={x + barW / 2} y={chartH + 20} textAnchor="middle" fontSize={9} fill="#475569">
-                  {d.label}
-                </text>
+                <text x={x + barW / 2} y={chartH + 20} textAnchor="middle" fontSize={9} fill="#475569">{d.label}</text>
               )}
             </g>
           );
         })}
-
-        {/* Trend line */}
-        <polyline
-          points={points}
-          fill="none"
-          stroke="#818cf8"
-          strokeWidth={1.5}
-          strokeOpacity={0.6}
-          strokeLinejoin="round"
-        />
+        <polyline points={points} fill="none" stroke="#818cf8" strokeWidth={1.5} strokeOpacity={0.6} strokeLinejoin="round" />
       </svg>
-
-      {/* Legend + peak label */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
         <div style={{ display: 'flex', gap: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#475569' }}>
@@ -161,6 +135,55 @@ function RevenueChart({ daily }) {
         </div>
         <div style={{ fontSize: 11, color: '#475569' }}>
           Peak: ${Math.max(...daily.map(d => d.revenue)).toFixed(2)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PageViewsChart({ daily }) {
+  if (!daily || daily.length === 0) return <div style={s.empty}>No page view data yet.<br />Visit your store to start tracking.</div>;
+  const maxCount = Math.max(...daily.map(d => d.count), 1);
+  const totalDays = daily.length;
+  const chartH = 120;
+  const chartW = 700;
+  const barW = Math.floor(chartW / totalDays) - 2;
+  const labelInterval = Math.ceil(totalDays / 7);
+
+  return (
+    <div style={{ overflowX: 'auto' }}>
+      <svg width="100%" viewBox={`0 0 ${chartW} ${chartH + 30}`} preserveAspectRatio="none" style={{ display: 'block', minWidth: 400 }}>
+        {[0.25, 0.5, 0.75, 1].map(pct => (
+          <line key={pct} x1={0} y1={chartH - pct * chartH} x2={chartW} y2={chartH - pct * chartH} stroke="#1e2a3a" strokeWidth={1} />
+        ))}
+        {daily.map((d, i) => {
+          const barH = Math.max(d.count > 0 ? 2 : 0, (d.count / maxCount) * chartH);
+          const x = i * (chartW / totalDays);
+          const y = chartH - barH;
+          const isToday = i === totalDays - 1;
+          return (
+            <g key={i}>
+              <rect x={x + 1} y={y} width={barW} height={barH} rx={2}
+                fill={isToday ? '#38bdf8' : d.count > 0 ? '#0ea5e9' : '#1a2535'} opacity={isToday ? 1 : 0.8} />
+              {d.count > 0 && <title>{d.label}: {d.count} views</title>}
+              {i % labelInterval === 0 && (
+                <text x={x + barW / 2} y={chartH + 20} textAnchor="middle" fontSize={9} fill="#475569">{d.label}</text>
+              )}
+            </g>
+          );
+        })}
+      </svg>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+        <div style={{ display: 'flex', gap: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#475569' }}>
+            <div style={{ width: 10, height: 10, borderRadius: 2, background: '#0ea5e9' }} /> Page Views
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#475569' }}>
+            <div style={{ width: 10, height: 10, borderRadius: 2, background: '#38bdf8' }} /> Today
+          </div>
+        </div>
+        <div style={{ fontSize: 11, color: '#475569' }}>
+          30d total: {daily.reduce((s, d) => s + d.count, 0).toLocaleString()} views
         </div>
       </div>
     </div>
@@ -188,13 +211,13 @@ function PawHavenData() {
 
   if (loading && !data) return <div style={s.loading}>Loading…</div>;
 
-  const { stripe, views, emailSubscribers, abandonedCarts } = data || {};
-  const maxViews = views?.[0]?.views || 1;
+  const { stripe, productViews, siteViews, emailSubscribers, abandonedCarts } = data || {};
+  const maxProductViews = productViews?.[0]?.views || 1;
+  const maxPageViews = siteViews?.topPages?.[0]?.views || 1;
 
   const revenueWoW = stripe?.lastWeekRevenue > 0
     ? <Delta current={stripe.thisWeekRevenue} previous={stripe.lastWeekRevenue} />
     : null;
-
   const ordersWoW = stripe?.lastWeekOrders > 0
     ? <Delta current={stripe.thisWeekOrders} previous={stripe.lastWeekOrders} />
     : null;
@@ -246,6 +269,12 @@ function PawHavenData() {
           delta={ordersWoW}
         />
         <StatCard
+          label="Site Views"
+          value={(siteViews?.total || 0).toLocaleString()}
+          sub={`${siteViews?.todayViews || 0} today`}
+          color="#38bdf8"
+        />
+        <StatCard
           label="Email Subscribers"
           value={emailSubscribers || 0}
           sub="Resend audience"
@@ -256,12 +285,6 @@ function PawHavenData() {
           value={abandonedCarts || 0}
           sub="Active recovery queued"
           color={abandonedCarts > 0 ? '#f59e0b' : '#f1f5f9'}
-        />
-        <StatCard
-          label="Top Product Views"
-          value={views?.[0]?.views || 0}
-          sub={views?.[0]?.name || '—'}
-          color="#818cf8"
         />
       </div>
 
@@ -278,20 +301,33 @@ function PawHavenData() {
         <RevenueChart daily={stripe?.daily} />
       </div>
 
-      {/* Tables */}
+      {/* Views Over Time chart */}
+      <div style={s.chartSection}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+          <h2 style={{ ...s.sectionTitle, margin: 0 }}>Site Views — Last 30 Days</h2>
+          <div style={{ fontSize: 12, color: '#64748b' }}>
+            All time: <span style={{ color: '#38bdf8', fontWeight: 700 }}>
+              {(siteViews?.total || 0).toLocaleString()} views
+            </span>
+          </div>
+        </div>
+        <PageViewsChart daily={siteViews?.daily} />
+      </div>
+
+      {/* Tables row 1: product views + recent orders */}
       <div style={s.row}>
         <div style={s.section}>
           <h2 style={s.sectionTitle}>Most Viewed Products</h2>
-          {views?.length > 0 ? (
+          {productViews?.length > 0 ? (
             <div>
-              {views.map((p) => (
+              {productViews.map((p) => (
                 <div key={p.id} style={{ marginBottom: 14 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                     <span style={{ fontSize: 13, color: '#cbd5e1', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginRight: 10 }}>{p.name}</span>
                     <span style={{ fontSize: 13, fontWeight: 700, color: '#818cf8', flexShrink: 0 }}>{p.views}</span>
                   </div>
                   <div style={{ background: '#0f172a', borderRadius: 4, height: 7 }}>
-                    <div style={{ ...s.bar, width: `${(p.views / maxViews) * 100}%` }} />
+                    <div style={{ ...s.bar, width: `${(p.views / maxProductViews) * 100}%` }} />
                   </div>
                 </div>
               ))}
@@ -328,6 +364,28 @@ function PawHavenData() {
             <div style={s.empty}>No completed orders yet.</div>
           )}
         </div>
+      </div>
+
+      {/* Top Pages */}
+      <div style={s.section}>
+        <h2 style={s.sectionTitle}>Top Pages</h2>
+        {siteViews?.topPages?.length > 0 ? (
+          <div>
+            {siteViews.topPages.map((p, i) => (
+              <div key={i} style={{ marginBottom: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <span style={{ fontSize: 13, color: '#cbd5e1', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginRight: 10, fontFamily: 'monospace' }}>{p.path}</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: '#38bdf8', flexShrink: 0 }}>{p.views.toLocaleString()}</span>
+                </div>
+                <div style={{ background: '#0f172a', borderRadius: 4, height: 6 }}>
+                  <div style={{ ...s.barAlt, height: 6, width: `${(p.views / maxPageViews) * 100}%` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={s.empty}>No page view data yet.<br />Browse your store to start tracking.</div>
+        )}
       </div>
     </>
   );

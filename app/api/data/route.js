@@ -1,22 +1,18 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
+import { Redis } from '@upstash/redis';
 
-async function redis(path) {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  const res = await fetch(`${url}/${path}`, {
-    headers: { Authorization: `Bearer ${token}` },
-    cache: 'no-store',
+function getRedis() {
+  return new Redis({
+    url: process.env.UPSTASH_REDIS_REST_URL,
+    token: process.env.UPSTASH_REDIS_REST_TOKEN,
   });
-  const json = await res.json();
-  return json.result;
 }
 
 async function getStripeData() {
   const key = process.env.STRIPE_SECRET_KEY;
   if (!key) return { revenue: 0, orders: 0, aov: 0, todayRevenue: 0, todayOrders: 0, thisWeekRevenue: 0, lastWeekRevenue: 0, thisWeekOrders: 0, lastWeekOrders: 0, recent: [], daily: [] };
 
-  // Fetch last 100 succeeded payment intents
   const res = await fetch('https://api.stripe.com/v1/payment_intents?limit=100', {
     headers: { Authorization: `Basic ${Buffer.from(key + ':').toString('base64')}` },
     cache: 'no-store',
@@ -27,14 +23,12 @@ async function getStripeData() {
   const revenue = succeeded.reduce((sum, p) => sum + p.amount, 0) / 100;
   const aov = succeeded.length > 0 ? revenue / succeeded.length : 0;
 
-  // Today
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
   const todayTs = Math.floor(todayStart.getTime() / 1000);
   const todayOrders = succeeded.filter(p => p.created >= todayTs);
   const todayRevenue = todayOrders.reduce((sum, p) => sum + p.amount, 0) / 100;
 
-  // This week vs last week (rolling 7-day windows)
   const now = Date.now();
   const weekMs = 7 * 24 * 60 * 60 * 1000;
   const thisWeekStart = Math.floor((now - weekMs) / 1000);
@@ -44,7 +38,6 @@ async function getStripeData() {
   const thisWeekRevenue = thisWeekOrderList.reduce((sum, p) => sum + p.amount, 0) / 100;
   const lastWeekRevenue = lastWeekOrderList.reduce((sum, p) => sum + p.amount, 0) / 100;
 
-  // 30-day daily revenue
   const daily = [];
   for (let i = 29; i >= 0; i--) {
     const d = new Date();
@@ -66,19 +59,7 @@ async function getStripeData() {
     name: p.shipping?.name || 'Customer',
   }));
 
-  return {
-    revenue,
-    orders: succeeded.length,
-    aov,
-    todayRevenue,
-    todayOrders: todayOrders.length,
-    thisWeekRevenue,
-    lastWeekRevenue,
-    thisWeekOrders: thisWeekOrderList.length,
-    lastWeekOrders: lastWeekOrderList.length,
-    recent,
-    daily,
-  };
+  return { revenue, orders: succeeded.length, aov, todayRevenue, todayOrders: todayOrders.length, thisWeekRevenue, lastWeekRevenue, thisWeekOrders: thisWeekOrderList.length, lastWeekOrders: lastWeekOrderList.length, recent, daily };
 }
 
 async function getEmailSubscriberCount() {
@@ -97,53 +78,105 @@ async function getEmailSubscriberCount() {
 }
 
 async function getAbandonedCartCount() {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return 0;
   try {
-    const res = await fetch(`${url}/keys/cart_recovery:*`, {
-      headers: { Authorization: `Bearer ${token}` },
-      cache: 'no-store',
-    });
-    const json = await res.json();
-    return Array.isArray(json.result) ? json.result.length : 0;
+    const redis = getRedis();
+    const keys = await redis.keys('cart_recovery:*');
+    return Array.isArray(keys) ? keys.length : 0;
   } catch { return 0; }
 }
 
-async function getViewData() {
-  const keys = await redis('keys/product:*');
-  if (!keys || keys.length === 0) return [];
+async function getProductViewData() {
+  try {
+    const redis = getRedis();
+    const keys = await redis.keys('product:*');
+    if (!keys || keys.length === 0) return [];
 
-  const products = [];
-  for (const key of keys) {
-    if (!key.endsWith('/views')) {
+    const products = [];
+    for (const key of keys) {
       const id = key.replace('product:', '');
-      const views = await redis(`hget/${key}/views`);
-      const name = await redis(`hget/${key}/name`);
-      products.push({
-        id,
-        name: name ? decodeURIComponent(name) : id,
-        views: parseInt(views || '0', 10),
-      });
+      const [views, name] = await Promise.all([
+        redis.hget(key, 'views'),
+        redis.hget(key, 'name'),
+      ]);
+      const viewCount = parseInt(views || '0', 10);
+      if (viewCount > 0) {
+        products.push({
+          id,
+          name: name ? String(name) : `Product ${id}`,
+          views: viewCount,
+        });
+      }
     }
-  }
 
-  return products.sort((a, b) => b.views - a.views).slice(0, 10);
+    return products.sort((a, b) => b.views - a.views).slice(0, 10);
+  } catch (err) {
+    console.error('[getProductViewData]', err);
+    return [];
+  }
 }
 
-export async function GET(req) {
+async function getSiteViewData() {
+  try {
+    const redis = getRedis();
+    const today = new Date().toISOString().slice(0, 10);
+
+    const [total, todayViews] = await Promise.all([
+      redis.get('pageviews:total'),
+      redis.get(`pageviews:daily:${today}`),
+    ]);
+
+    // Last 30 days daily breakdown
+    const dailyKeys = [];
+    const dailyLabels = [];
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toISOString().slice(0, 10);
+      dailyKeys.push(`pageviews:daily:${dateStr}`);
+      dailyLabels.push({ label: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), date: dateStr });
+    }
+
+    const dailyCounts = await Promise.all(dailyKeys.map(k => redis.get(k)));
+    const daily = dailyLabels.map((meta, i) => ({
+      ...meta,
+      count: parseInt(dailyCounts[i] || '0', 10),
+    }));
+
+    // Top 10 pages from sorted set
+    const raw = await redis.zrange('pageviews:pages', 0, 9, { rev: true, withScores: true });
+    const topPages = [];
+    if (Array.isArray(raw)) {
+      for (let i = 0; i < raw.length; i += 2) {
+        topPages.push({ path: String(raw[i]), views: Number(raw[i + 1] || 0) });
+      }
+    }
+
+    return {
+      total: parseInt(total || '0', 10),
+      todayViews: parseInt(todayViews || '0', 10),
+      daily,
+      topPages,
+    };
+  } catch (err) {
+    console.error('[getSiteViewData]', err);
+    return { total: 0, todayViews: 0, daily: [], topPages: [] };
+  }
+}
+
+export async function GET() {
   const cookieStore = cookies();
   const auth = cookieStore.get('dash_auth');
   if (!auth || auth.value !== process.env.DASHBOARD_PASSWORD) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const [stripe, views, emailSubscribers, abandonedCarts] = await Promise.all([
+  const [stripe, productViews, siteViews, emailSubscribers, abandonedCarts] = await Promise.all([
     getStripeData(),
-    getViewData(),
+    getProductViewData(),
+    getSiteViewData(),
     getEmailSubscriberCount(),
     getAbandonedCartCount(),
   ]);
 
-  return NextResponse.json({ stripe, views, emailSubscribers, abandonedCarts });
+  return NextResponse.json({ stripe, productViews, siteViews, emailSubscribers, abandonedCarts });
 }
