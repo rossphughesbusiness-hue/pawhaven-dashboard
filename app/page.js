@@ -199,7 +199,6 @@ function PawHavenData() {
     setLoading(true);
     try {
       const res = await fetch('/api/data');
-      if (res.status === 401) { window.location.href = '/login'; return; }
       const json = await res.json();
       setData(json);
       setLastUpdated(new Date().toLocaleTimeString());
@@ -394,11 +393,6 @@ function PawHavenData() {
 export default function Dashboard() {
   const [activeStore, setActiveStore] = useState('pawhaven');
 
-  async function logout() {
-    await fetch('/api/auth', { method: 'DELETE' });
-    window.location.href = '/login';
-  }
-
   return (
     <div style={s.shell}>
       <div style={s.sidebar}>
@@ -425,7 +419,7 @@ export default function Dashboard() {
         </div>
 
         <div style={s.sidebarBottom}>
-          <button style={s.logoutBtn} onClick={logout}>← Sign out</button>
+          <div style={{ fontSize: 11, color: '#334155', padding: '0 8px' }}>Hughes Financials v1</div>
         </div>
       </div>
 

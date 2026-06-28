@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
 import { Redis } from '@upstash/redis';
 
 function getRedis() {
@@ -164,12 +163,6 @@ async function getSiteViewData() {
 }
 
 export async function GET() {
-  const cookieStore = cookies();
-  const auth = cookieStore.get('dash_auth');
-  if (!auth || auth.value !== process.env.DASHBOARD_PASSWORD) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
   const [stripe, productViews, siteViews, emailSubscribers, abandonedCarts] = await Promise.all([
     getStripeData(),
     getProductViewData(),
